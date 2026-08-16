@@ -8,6 +8,11 @@ function NewBill({ onSaved }) {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [rate, setRate] = useState("");
+  const [cgstAmount, setCgstAmount] = useState("");
+  const [sgstAmount, setSgstAmount] = useState("");
+  const [productRate, setProductRate] = useState("");
+  const [productCgst, setProductCgst] = useState("");
+  const [productSgst, setProductSgst] = useState("");
   const [items, setItems] = useState([]);
 
   const [discount, setDiscount] = useState("");
@@ -19,7 +24,7 @@ function NewBill({ onSaved }) {
   const [paidAmount, setPaidAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [showQr, setShowQr] = useState(false);
-  const [upiId, setUpiId] = useState("dhanupurakisansewakendra@okicici");
+  const [upiId, setUpiId] = useState("8859924403m@pn");
   const [editingUpi, setEditingUpi] = useState(false);
   const [newUpiId, setNewUpiId] = useState("");
 
@@ -36,7 +41,6 @@ function NewBill({ onSaved }) {
   const [showProductForm, setShowProductForm] = useState(false);
   const [productName, setProductName] = useState("");
   const [productUnit, setProductUnit] = useState("kg");
-  const [productRate, setProductRate] = useState("");
   const [savingProduct, setSavingProduct] = useState(false);
 
   useEffect(() => {
@@ -66,6 +70,7 @@ function NewBill({ onSaved }) {
               .from("products")
               .select("*")
               .eq("user_id", user.id)
+              .eq("active", true)
               .order("name"),
           ]);
 
@@ -91,16 +96,36 @@ function NewBill({ onSaved }) {
     };
   }, []);
 
-  function handleProductChange(event) {
-    const id = event.target.value;
-    setSelectedProductId(id);
+   function handleProductChange(event) {
+        const id = event.target.value;
 
-    const product = products.find(
-      (item) => String(item.id) === String(id)
-    );
+        setSelectedProductId(id);
 
-    setRate(product?.selling_rate ?? product?.rate ?? "");
-  }
+        const product = products.find(
+          (item) => String(item.id) === String(id)
+        );
+
+        if (!product) {
+          setRate("");
+          setCgstAmount("");
+          setSgstAmount("");
+          return;
+        }
+
+        setRate(
+          product.selling_rate ??
+          product.rate ??
+          ""
+        );
+
+        setCgstAmount(
+          product.cgst ?? ""
+        );
+
+        setSgstAmount(
+          product.sgst ?? ""
+        );
+      }
 
   function addProduct() {
     setMessage("");
@@ -138,15 +163,36 @@ function NewBill({ onSaved }) {
         product_id: product.id,
         product_name: product.name,
         unit: product.unit || "kg",
+
         quantity: qty,
         rate: productRate,
+
+        // Final amount including tax
         amount: qty * productRate,
+
+        // GST declared in product
+        cgst_amount:
+          Number(cgstAmount || 0) * qty,
+
+        sgst_amount:
+          Number(sgstAmount || 0) * qty,
+
+        // Amount before GST
+        taxable_amount:
+          Math.max(
+            qty * productRate -
+            Number(cgstAmount || 0) * qty -
+            Number(sgstAmount || 0) * qty,
+            0
+          ),
       },
     ]);
 
     setSelectedProductId("");
     setQuantity("");
     setRate("");
+    setCgstAmount("");
+    setSgstAmount("");
   }
 
   function removeItem(index) {
@@ -161,76 +207,254 @@ function NewBill({ onSaved }) {
   const manualDiscount = Math.max(Number(discount) || 0, 0);
 
   function generateCouponCode() {
-    if (couponGenerated) return;
+  if (couponGenerated) return;
 
-    if (subtotal <= 0) {
-      setMessage("Add products before generating a coupon.");
-      return;
-    }
+  if (!customerId) {
+    setMessage("Please select a customer first.");
+    return;
+  }
 
-    const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "SAVE-";
+  if (subtotal <= 0) {
+    setMessage("Add products before generating a coupon.");
+    return;
+  }
 
-    for (let i = 0; i < 6; i++) {
-      code += characters[
-        Math.floor(Math.random() * characters.length)
+  const customer = customers.find(
+    (item) => String(item.id) === String(customerId)
+  );
+
+  if (!customer) {
+    setMessage("Customer not found.");
+    return;
+  }
+
+  if (!customer.mobile) {
+    setMessage(
+      "Customer does not have a mobile number."
+    );
+    return;
+  }
+
+  const characters =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  let code = "SAVE-";
+
+  for (let i = 0; i < 6; i++) {
+    code +=
+      characters[
+        Math.floor(
+          Math.random() * characters.length
+        )
       ];
-    }
-
-    const maxDiscount = Math.min(
-      100,
-      Math.floor(subtotal * 0.1)
-    );
-
-    if (maxDiscount < 1) {
-      setMessage("Bill amount is too low to generate a coupon.");
-      return;
-    }
-
-    const randomDiscount =
-      Math.floor(Math.random() * maxDiscount) + 1;
-
-    setGeneratedCoupon({
-      code,
-      discount: randomDiscount,
-    });
-
-    setCouponCode(code);
-    setCouponDiscount(randomDiscount);
-    setCouponGenerated(true);
-
-    setMessage(
-      `Coupon generated: ${code} — ₹${randomDiscount} OFF`
-    );
   }
 
-  function applyCoupon() {
-    setMessage("");
+  const maxDiscount = Math.min(
+    100,
+    Math.floor(subtotal * 0.1)
+  );
 
-    const enteredCode = couponCode.trim().toUpperCase();
-
-    if (!enteredCode) {
-      setMessage("Please enter a coupon code.");
-      return;
-    }
-
-    if (!generatedCoupon) {
-      setMessage("Please generate a coupon first.");
-      return;
-    }
-
-    if (enteredCode !== generatedCoupon.code) {
-      setMessage("Invalid coupon code.");
-      return;
-    }
-
-    setCouponDiscount(generatedCoupon.discount);
-
+  if (maxDiscount < 1) {
     setMessage(
-      `Coupon applied successfully — ₹${generatedCoupon.discount} discount.`
+      "Bill amount is too low to generate a coupon."
     );
+    return;
   }
 
+  const randomDiscount =
+    Math.floor(
+      Math.random() * maxDiscount
+    ) + 1;
+
+  setGeneratedCoupon({
+    code,
+    discount: randomDiscount,
+    customerId: customer.id,
+    customerName: customer.name,
+    mobile: customer.mobile,
+  });
+
+  // IMPORTANT:
+  // Do NOT apply the discount here.
+  setCouponCode("");
+  setCouponDiscount(0);
+
+  setCouponGenerated(true);
+
+  setMessage(
+    `Coupon generated: ${code} — ₹${randomDiscount} OFF. Enter the code manually and click Apply to use it.`
+  );
+}
+// function generateCouponCode() {
+//   if (couponGenerated) return;
+
+//   if (!customerId) {
+//     setMessage("Please select a customer first.");
+//     return;
+//   }
+
+//   if (subtotal <= 0) {
+//     setMessage("Add products before generating a coupon.");
+//     return;
+//   }
+
+//   const customer = customers.find(
+//     (item) => String(item.id) === String(customerId)
+//   );
+
+//   if (!customer) {
+//     setMessage("Customer not found.");
+//     return;
+//   }
+
+//   if (!customer.mobile) {
+//     setMessage(
+//       "Customer does not have a mobile number."
+//     );
+//     return;
+//   }
+
+//   const characters =
+//     "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+//   let code = "SAVE-";
+
+//   for (let i = 0; i < 6; i++) {
+//     code +=
+//       characters[
+//         Math.floor(
+//           Math.random() * characters.length
+//         )
+//       ];
+//   }
+
+//   // 10% of subtotal, maximum ₹100
+//   const maxDiscount = Math.min(
+//     100,
+//     Math.floor(subtotal * 0.1)
+//   );
+
+//   if (maxDiscount < 1) {
+//     setMessage(
+//       "Bill amount is too low to generate a coupon."
+//     );
+//     return;
+//   }
+
+//   const randomDiscount =
+//     Math.floor(
+//       Math.random() * maxDiscount
+//     ) + 1;
+
+//   const coupon = {
+//     code,
+//     discount: randomDiscount,
+//     customerId: customer.id,
+//     customerName: customer.name,
+//     mobile: customer.mobile,
+//   };
+
+//   setGeneratedCoupon(coupon);
+//   setCouponCode(code);
+//   setCouponDiscount(0);
+//   setCouponGenerated(true);
+
+//   setMessage(
+//     `Coupon generated: ${code} — ₹${randomDiscount} OFF`
+//   );
+// }
+function applyCoupon() {
+  setMessage("");
+
+  const enteredCode = couponCode
+    .trim()
+    .toUpperCase();
+
+  if (!enteredCode) {
+    setMessage("Please enter a coupon code.");
+    return;
+  }
+
+  if (!generatedCoupon) {
+    setMessage(
+      "This coupon is not available for this bill."
+    );
+    return;
+  }
+
+  if (
+    enteredCode !==
+    generatedCoupon.code.toUpperCase()
+  ) {
+    setMessage("Invalid coupon code.");
+    return;
+  }
+
+  setCouponDiscount(
+    Number(generatedCoupon.discount)
+  );
+
+  setMessage(
+    `Coupon applied successfully — ₹${Number(
+      generatedCoupon.discount
+    ).toFixed(2)} discount.`
+  );
+}
+function sendCouponOnWhatsApp() {
+  if (!generatedCoupon) {
+    setMessage("Please generate a coupon first.");
+    return;
+  }
+
+  const customer = customers.find(
+    (item) =>
+      String(item.id) ===
+      String(generatedCoupon.customerId)
+  );
+
+  if (!customer?.mobile) {
+    setMessage(
+      "Customer mobile number is not available."
+    );
+    return;
+  }
+
+  let mobile = String(customer.mobile).replace(
+    /\D/g,
+    ""
+  );
+
+  // India number handling
+  if (mobile.length === 10) {
+    mobile = `91${mobile}`;
+  }
+
+  if (mobile.length < 12) {
+    setMessage(
+      "Please enter a valid 10-digit Indian mobile number."
+    );
+    return;
+  }
+
+  const messageText =
+    `🎁 *Dhanupura Kisan Sewa Kendra*\n\n` +
+    `Hello ${customer.name || "Customer"} 👋\n\n` +
+    `You have received a special coupon! 🎉\n\n` +
+    `🎟 Coupon Code: *${generatedCoupon.code}*\n` +
+    `💰 Discount: *₹${generatedCoupon.discount} OFF*\n\n` +
+    `Use this coupon while creating your bill.\n\n` +
+    `Thank you for shopping with us! 🙏`;
+
+  const whatsappUrl =
+    `https://wa.me/${mobile}?text=` +
+    encodeURIComponent(messageText);
+
+  window.open(
+    whatsappUrl,
+    "_blank",
+    "noopener,noreferrer"
+  );
+}
   function removeCoupon() {
     setCouponCode("");
     setCouponDiscount(0);
@@ -316,11 +540,20 @@ function NewBill({ onSaved }) {
 
       const name = productName.trim();
       const rateValue = Number(productRate);
+      const cgstValue = Number(productCgst);
+      const sgstValue = Number(productSgst);
 
       if (!name) throw new Error("Product name is required.");
 
       if (Number.isNaN(rateValue) || rateValue < 0) {
         throw new Error("Please enter a valid selling rate.");
+      }
+      if (Number.isNaN(cgstValue) || cgstValue < 0) {
+        throw new Error("Please enter a valid CGST amount.");
+      }
+
+      if (Number.isNaN(sgstValue) || sgstValue < 0) {
+        throw new Error("Please enter a valid SGST amount.");
       }
 
       const {
@@ -338,6 +571,9 @@ function NewBill({ onSaved }) {
           name,
           unit: productUnit,
           selling_rate: rateValue,
+          cgst: cgstValue,
+          sgst: sgstValue,
+           active: true,
         })
         .select()
         .single();
@@ -352,9 +588,13 @@ function NewBill({ onSaved }) {
 
       setSelectedProductId(data.id);
       setRate(data.selling_rate ?? rateValue);
+      setCgstAmount(data.cgst ?? cgstValue);
+      setSgstAmount(data.sgst ?? sgstValue);
       setProductName("");
       setProductUnit("kg");
       setProductRate("");
+      setProductCgst("");
+      setProductSgst("");
       setShowProductForm(false);
       setMessage("Product created successfully.");
     } catch (error) {
@@ -439,6 +679,9 @@ function NewBill({ onSaved }) {
           quantity: item.quantity,
           rate: item.rate,
           amount: item.amount,
+          cgst_amount: item.cgst_amount || 0, 
+          sgst_amount: item.sgst_amount || 0,
+          taxable_amount: item.taxable_amount || 0,
         };
       });
 
@@ -475,19 +718,21 @@ function NewBill({ onSaved }) {
   }
 
   function clearBill() {
-    setCustomerId("");
-    setSelectedProductId("");
-    setQuantity("");
-    setRate("");
-    setItems([]);
-    setDiscount("");
-    setCouponCode("");
-    setCouponDiscount(0);
-    setGeneratedCoupon(null);
-    setPaidAmount("");
-    setPaymentMethod("cash");
-    setCouponGenerated(false);
-  }
+  setCustomerId("");
+  setSelectedProductId("");
+  setQuantity("");
+  setRate("");
+  setCgstAmount("");
+  setSgstAmount("");
+  setItems([]);
+  setDiscount("");
+  setCouponCode("");
+  setCouponDiscount(0);
+  setGeneratedCoupon(null);
+  setPaidAmount("");
+  setPaymentMethod("cash");
+  setCouponGenerated(false);
+}
 
   if (loading) {
     return (
@@ -695,12 +940,19 @@ function NewBill({ onSaved }) {
                       {item.product_name}
                     </strong>
 
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
+                    <span className="block text-sm text-slate-500 dark:text-slate-400">
                       {item.quantity} {item.unit} × ₹
                       {Number(item.rate).toFixed(2)}
                     </span>
-                  </div>
 
+                    <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                      Taxable: ₹{Number(item.taxable_amount || 0).toFixed(2)}
+                      {" • "}
+                      CGST: ₹{Number(item.cgst_amount || 0).toFixed(2)}
+                      {" • "}
+                      SGST: ₹{Number(item.sgst_amount || 0).toFixed(2)}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-3">
                     <strong className="whitespace-nowrap text-slate-900 dark:text-white">
                       ₹{Number(item.amount).toFixed(2)}
@@ -777,17 +1029,49 @@ function NewBill({ onSaved }) {
                     Apply or generate a coupon
                   </p>
                 </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={generateCouponCode}
+                        disabled={couponGenerated}
+                        className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {couponGenerated
+                          ? "✓ Coupon Generated"
+                          : "🎲 Generate Coupon"}
+                      </button>
 
-                <button
-                  type="button"
-                  onClick={generateCouponCode}
-                  disabled={couponGenerated}
-                  className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
-                >
-                  {couponGenerated
-                    ? "✓ Coupon Generated"
-                    : "🎲 Generate Coupon"}
-                </button>
+                      {generatedCoupon && (
+                        <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/40">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">
+                              Coupon Generated
+                            </p>
+
+                            <p className="mt-1 text-xl font-bold tracking-wider text-green-800 dark:text-green-300">
+                              {generatedCoupon.code}
+                            </p>
+
+                            <p className="mt-1 text-sm text-green-700 dark:text-green-400">
+                              ₹{Number(generatedCoupon.discount).toFixed(2)} OFF
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={sendCouponOnWhatsApp}
+                            className="rounded-lg bg-green-600 px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-green-700"
+                          >
+                            📱 WhatsApp
+                          </button>
+
+                        </div>
+
+                      </div>
+                    )}
+                    </div>
               </div>
 
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -1020,6 +1304,21 @@ function NewBill({ onSaved }) {
               placeholder="120"
               type="number"
             />
+            <Field
+            label="CGST ₹"
+            value={productCgst}
+            onChange={setProductCgst}
+            placeholder="9"
+            type="number"
+          />
+
+          <Field
+            label="SGST ₹"
+            value={productSgst}
+            onChange={setProductSgst}
+            placeholder="9"
+            type="number"
+          />
 
             <ModalButtons
               onCancel={() => setShowProductForm(false)}

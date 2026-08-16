@@ -213,6 +213,77 @@ function Bills({ onViewBill }) {
 
     setPaymentInvoice(null);
   }
+  async function handleDeleteBill(bill) {
+  const confirmed = window.confirm(
+    `Are you sure you want to permanently delete bill ${bill.invoice_number}?\n\n` +
+    `Customer: ${bill.customer?.name || "Unknown"}\n` +
+    `Amount: ₹${Number(bill.total_amount || 0).toFixed(2)}\n\n` +
+    `This will permanently delete the bill, its items and payment records.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    setMessage("");
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) throw userError;
+    if (!user) throw new Error("User session not found.");
+
+    /*
+     * Delete related payment records first.
+     */
+    const { error: paymentsError } = await supabase
+      .from("payments")
+      .delete()
+      .eq("invoice_id", bill.id)
+      .eq("user_id", user.id);
+
+    if (paymentsError) throw paymentsError;
+
+    /*
+     * Delete invoice items.
+     */
+    const { error: itemsError } = await supabase
+      .from("invoice_items")
+      .delete()
+      .eq("invoice_id", bill.id);
+
+    if (itemsError) throw itemsError;
+
+    /*
+     * Finally delete the invoice itself.
+     */
+    const { error: invoiceError } = await supabase
+      .from("invoices")
+      .delete()
+      .eq("id", bill.id)
+      .eq("user_id", user.id);
+
+    if (invoiceError) throw invoiceError;
+
+    /*
+     * Remove it immediately from the UI.
+     */
+    setBills((current) =>
+      current.filter((item) => item.id !== bill.id)
+    );
+
+    setMessage(
+      `Bill ${bill.invoice_number} deleted successfully.`
+    );
+  } catch (error) {
+    console.error("Error deleting bill:", error);
+
+    setMessage(
+      error.message || "Failed to delete bill."
+    );
+  }
+}
 
   if (loading) {
     return (
@@ -431,31 +502,38 @@ function Bills({ onViewBill }) {
                         {status.toUpperCase()}
                       </span>
 
-                      <div className="mt-1 flex flex-wrap gap-2">
+                <div className="mt-1 flex flex-wrap gap-2">
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onViewBill(bill.id)
-                          }
-                          className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/50"
-                        >
-                          View
-                        </button>
+                  {/* VIEW */}
+                  <button
+                    type="button"
+                    onClick={() => onViewBill(bill.id)}
+                    className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                  >
+                    View
+                  </button>
 
-                        {balance > 0 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPaymentInvoice(bill)
-                            }
-                            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-                          >
-                            Pay
-                          </button>
-                        )}
+                  {/* PAY */}
+                  {balance > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentInvoice(bill)}
+                      className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                    >
+                      Pay
+                    </button>
+                  )}
 
-                      </div>
+                  {/* DELETE */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBill(bill)}
+                    className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/50"
+                  >
+                    Delete
+                  </button>
+
+                </div>
                     </div>
 
                   </div>

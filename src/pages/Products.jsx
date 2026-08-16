@@ -6,6 +6,8 @@ function Products() {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("kg");
   const [rate, setRate] = useState("");
+  const [cgst, setCgst] = useState("");
+  const [sgst, setSgst] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -74,10 +76,20 @@ function Products() {
       return;
     }
 
-    if (rate === "" || Number(rate) < 0) {
-      setMessage("Enter a valid selling rate.");
-      return;
-    }
+   if (rate === "" || Number(rate) < 0) {
+    setMessage("Enter a valid selling rate.");
+    return;
+  }
+
+  if (cgst === "" || Number(cgst) < 0) {
+    setMessage("Enter a valid CGST amount.");
+    return;
+  }
+
+  if (sgst === "" || Number(sgst) < 0) {
+    setMessage("Enter a valid SGST amount.");
+    return;
+  }
 
     setLoading(true);
 
@@ -97,6 +109,8 @@ function Products() {
             name: name.trim(),
             unit,
             selling_rate: Number(rate),
+            cgst: Number(cgst),
+            sgst: Number(sgst),
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingId)
@@ -107,14 +121,16 @@ function Products() {
         setMessage("Product updated successfully.");
       } else {
         const { error } = await supabase
-          .from("products")
-          .insert({
-            user_id: user.id,
-            name: name.trim(),
-            unit,
-            selling_rate: Number(rate),
-            active: true,
-          });
+        .from("products")
+        .insert({
+          user_id: user.id,
+          name: name.trim(),
+          unit,
+          selling_rate: Number(rate),
+          cgst: Number(cgst),
+          sgst: Number(sgst),
+          active: true,
+        });
 
         if (error) throw error;
 
@@ -131,13 +147,15 @@ function Products() {
     }
   }
 
-  function editProduct(product) {
-    setEditingId(product.id);
-    setName(product.name || "");
-    setUnit(product.unit || "kg");
-    setRate(product.selling_rate ?? "");
-    setMessage("");
-  }
+    function editProduct(product) {
+      setEditingId(product.id);
+      setName(product.name || "");
+      setUnit(product.unit || "kg");
+      setRate(product.selling_rate ?? "");
+      setCgst(product.cgst ?? "");
+      setSgst(product.sgst ?? "");
+      setMessage("");
+    }
 
   async function deleteProduct(productId) {
     if (!window.confirm("Are you sure you want to delete this product?")) {
@@ -175,11 +193,13 @@ function Products() {
   }
 
   function clearForm() {
-    setEditingId(null);
-    setName("");
-    setUnit("kg");
-    setRate("");
-  }
+      setEditingId(null);
+      setName("");
+      setUnit("kg");
+      setRate("");
+      setCgst("");
+      setSgst("");
+    }
 
   const inputClass =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-900";
@@ -271,6 +291,39 @@ function Products() {
                       className={inputClass}
                     />
                   </div>
+                  <div>
+                    <label htmlFor="product-cgst" className={labelClass}>
+                      CGST ₹
+                    </label>
+
+                    <input
+                      id="product-cgst"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cgst}
+                      onChange={(event) => setCgst(event.target.value)}
+                      placeholder="9.00"
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="product-sgst" className={labelClass}>
+                      SGST ₹
+                    </label>
+
+                    <input
+                      id="product-sgst"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={sgst}
+                      onChange={(event) => setSgst(event.target.value)}
+                      placeholder="9.00"
+                      className={inputClass}
+                    />
+                  </div>
 
                 </div>
 
@@ -356,17 +409,25 @@ function Products() {
                           {product.name}
                         </h3>
 
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                          <span className="font-medium text-slate-700 dark:text-slate-200">
-                            ₹ {Number(product.selling_rate).toFixed(2)}
-                          </span>
+                       <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                          <div>
+                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                              ₹ {Number(product.selling_rate).toFixed(2)}
+                            </span>
 
-                          <span className="mx-1 text-slate-300 dark:text-slate-600">
-                            /
-                          </span>
+                            <span className="mx-1 text-slate-300 dark:text-slate-600">
+                              /
+                            </span>
 
-                          {product.unit}
-                        </p>
+                            {product.unit}
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            CGST: ₹{Number(product.cgst || 0).toFixed(2)}
+                            {" • "}
+                            SGST: ₹{Number(product.sgst || 0).toFixed(2)}
+                          </div>
+                        </div>
                       </div>
 
                       <div className="flex shrink-0 gap-2">
